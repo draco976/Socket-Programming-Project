@@ -52,9 +52,13 @@ int main(int argc, char *argv[])
     int neighbourCount ;
     int reqFileCount ;
     vector<Node*> neighbourList ;
-    vector<string> reqFileList ;
+    vector<pair<string,Node*> > reqFileList ;
     vector<string> ownFileList ;
     string directory ;
+
+    Node* emptyNode = new Node() ;
+
+    int receive_count = 0 ; // Number of nodes msg received from
 
     ifstream configFile(argv[1]);
     directory = argv[2] ;
@@ -78,8 +82,10 @@ int main(int argc, char *argv[])
 
         configFile >> fileName ;
 
-        reqFileList.push_back(fileName) ;
+        reqFileList.push_back(make_pair(fileName,emptyNode)) ;
     }
+
+    sort(reqFileList.begin(), reqFileList.end()) ;
 
     DIR *dir; struct dirent *diread;
 
@@ -260,17 +266,74 @@ int main(int argc, char *argv[])
                         FD_CLR(i, &master_read); // remove from master set
                     } else {
 
-                        cout << "connected to " ;
-                        cout << buf[5] ;
-                        cout << " with unique-ID " ;
-                        for(j=0;j<4;j++) {
-                            cout << buf[j] ;
+                        string msg = (string) buf ;
+
+                        vector<string> list ;
+
+                        auto start = 0U;
+                        auto end = msg.find("#");
+                        while (end != string::npos)
+                        {
+                            if(msg[start]=='#') break ;
+                            list.push_back(msg.substr(start, end - start)) ;
+                            start = end + 1;
+                            end = msg.find("#", start);
                         }
-                        cout << " on port " ;
-                        for(j=7;j<11;j++) {
-                            cout << buf[j] ;
+
+                        Node* nd ;
+
+                        for(auto node:neighbourList) {
+                            if(node->ID == list[1]) {
+                                node->uID = list[0] ;
+                                nd = node ;
+                                if(nd == emptyNode) cout << "FUCK" << endl ;
+                                continue ;
+                            }
                         }
-                        cout << endl ;
+
+                        for(int i=3;i<list.size();i++) {
+                            for(int j=0;j<reqFileCount;j++) {
+                                if(reqFileList[j].first == list[i]) {
+                                    if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->ID) {
+                                        reqFileList[j].second = nd ;
+                                    }
+                                    continue ;
+                                }
+                            }
+                        }
+
+                        receive_count++ ;
+
+                        if(receive_count == neighbourCount) {
+                            for(auto file:reqFileList) {
+                                cout << "Found " + file.first + " at " ;
+                                if(file.second != emptyNode) {
+                                    cout << file.second->uID ;
+                                }
+                                else cout << "0" ;
+                                cout << " with MD5 0 at depth " ;
+                                if(file.second != emptyNode) {
+                                    cout << "1" ;
+                                }
+                                else cout << "0" ;
+                                cout << endl ;
+                            }
+
+                        }
+
+                        // std::cout << buf.substr(start, end);
+
+                        // cout << "connected to " ;
+                        // cout << buf[5] ;
+                        // cout << " with unique-ID " ;
+                        // for(j=0;j<4;j++) {
+                        //     cout << buf[j] ;
+                        // }
+                        // cout << " on port " ;
+                        // for(j=7;j<11;j++) {
+                        //     cout << buf[j] ;
+                        // }
+                        // cout << endl ;
                     }
                 } // END handle data from client
             } // END got new incoming connection
@@ -279,6 +342,10 @@ int main(int argc, char *argv[])
                 for (auto node : neighbourList) {
                     if(node->sockfd==i && node->status == 0) {
                         string msg = uniqueID + "#" + ID + "#" + PORT;
+                        for (auto file:ownFileList) {
+                            msg += "#" + file ;
+                        }
+                        msg += "##" ;
                         if (send(i, msg.c_str(), msg.length(), 0) > 0) {
                             node->status=1 ;
                         }
