@@ -16,10 +16,24 @@
 #include <algorithm>
 #include <sys/unistd.h>
 #include <sys/fcntl.h>
+#include <queue>
+#include <sys/stat.h>
+#include <experimental/filesystem>
+#include "md5.h"
 
 using namespace std ;
 
 #define BACKLOG 10
+
+string readFileIntoString(const string& path) {
+    ifstream input_file(path);
+    if (!input_file.is_open()) {
+        cerr << "Could not open the file - '"
+             << path << "'" << endl;
+        exit(EXIT_FAILURE);
+    }
+    return string((std::istreambuf_iterator<char>(input_file)), std::istreambuf_iterator<char>());
+}
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -41,18 +55,15 @@ class Node {
     // request = 1 if initial request sent
     // request = 0 if initial request not sent yet
     int request ; 
-    int rep ;
     string reply ;
-    
+    queue<string> demand ;
+    queue<string> send ;
 
     Node() {
         request = 0 ;
         reply = "" ;
-        rep = 1 ;
-    }
-
-    void AppendReply(string s) {
-        reply.append(s) ;
+        demand.empty() ;
+        send.empty() ;
     }
 } ;
 
@@ -68,12 +79,19 @@ int main(int argc, char *argv[])
     vector<string> ownFileList ;
     string directory ;
 
+
+    // std::experimental::filesystem::remove((directory+"Download/").c_str());
+
+
     Node* emptyNode = new Node() ;
 
     int receive_count = 0 ; // Number of nodes msg received from
+    int found_count = 0 ;
 
     ifstream configFile(argv[1]);
     directory = argv[2] ;
+
+    mkdir((directory+"Download/").c_str(), 0777) ; 
 
     configFile >> ID >> PORT >> uniqueID ;
     // configFile >> ID >> uniqueID ;
@@ -113,9 +131,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // for (auto file : ownFileList) {
-    //     cout << file << endl ;
-    // }
+    sort(ownFileList.begin(), ownFileList.end()) ;
+
+    for (auto file : ownFileList) {
+        cout << file << endl ;
+    }
 
     fd_set master_read;    // master file descriptor list
     fd_set master_write;
@@ -225,7 +245,6 @@ int main(int argc, char *argv[])
             fdmax = neighbourList[i]->sockfd;
         }
 
-        // cout << neighbour.second.c_str() << endl ;
     }
 
     // main loop
@@ -236,7 +255,6 @@ int main(int argc, char *argv[])
             perror("select");
             exit(4);
         }
-        // cout << "ABCDQQQQQ" << endl ;
 
         // run through the existing connections looking for data to read
         for(i = 0; i <= fdmax; i++) {
@@ -266,83 +284,114 @@ int main(int argc, char *argv[])
                     }
                 } 
                 else {
-                    // handle data from a client
-                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-                        // got error or connection closed by client
-                        if (nbytes == 0) {
-                            // connection closed
+                    size_t buf_idx = 0;
+                    char buf[1024] ;
+
+                    vector<string> list ;
+                    string s ;
+
+                    while (buf_idx < 1024)
+                    {
+                        int nbytes = recv(i, buf+buf_idx, 1, 0) ;
+                        if(nbytes  == 0) {
                             printf("selectserver: socket %d hung up\n", i);
-                        } else {
+                            close(i); // bye!
+                            FD_CLR(i, &master_read); // remove from master set
+                        }
+                        else if(nbytes < 0) {
+                            break ;
+                        }
+
+                        if (buf_idx > 6 && '$' == buf[buf_idx] && '#' == buf[buf_idx - 1] && '&' == buf[buf_idx-2]  && buf[buf_idx-3] == '@' 
+                        && '$' == buf[buf_idx-4] && '#' == buf[buf_idx - 5] && '&' == buf[buf_idx-6]  && buf[buf_idx-7] == '@'){
+                            break;
+                        }
+                        else if (buf_idx > 2 && buf[buf_idx] == '$' && buf[buf_idx-1] == '#' && buf[buf_idx-2] == '&' && buf[buf_idx-3] == '@') {    
+                            s = s.substr(0, s.length() - 3) ;
+                            list.push_back(s) ;
+                            s = "" ;
+                        }
+                        else {
+                            s += buf[buf_idx] ;
+                        }
+                        
+                        buf_idx++;
+                    };
+
+                    if(list.size()<4) {
+                        continue  ;
+                    }
+
+                    Node* nd ;
+
+                    for(int j=0;j<neighbourCount;j++) {
+                        if(neighbourList[j]->ID == list[2]) {
+                            neighbourList[j]->uID = list[1] ;
+                            nd = neighbourList[j] ;
                             continue ;
                         }
-                        close(i); // bye!
-                        FD_CLR(i, &master_read); // remove from master set
-                    } else {
+                    }
 
-                        // Break msg
 
-                        string msg = (string) buf ;
-
-                        vector<string> list ;
-
-                        auto start = 0U;
-                        auto end = msg.find("#");
-                        while (end != string::npos)
-                        {
-                            if(msg[start]=='#') break ;
-                            list.push_back(msg.substr(start, end - start)) ;
-                            start = end + 1;
-                            end = msg.find("#", start);
-                        }
-
-                        // Identify nodes
-
-                        Node* nd ;
-
-                        for(int j=0;j<neighbourCount;j++) {
-                            if(neighbourList[j]->ID == list[2]) {
-                                neighbourList[j]->uID = list[1] ;
-                                nd = neighbourList[j] ;
-                                continue ;
-                            }
-                        }
-
-                        if(list[0] == "Request") {
-                            nd->reply = "Reply#" + uniqueID + "#" + ID + "#" + PORT;
-                            for (auto file: ownFileList) {
-                                for (i=4;i<list.size();i++) {
-                                    if(list[i]==file) {
-                                        nd->reply += "#" + list[i] ;
-                                        continue ;
-                                    }
+                    if(list[0] == "Request") {
+                        nd->reply = "Reply@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT;
+                        for (auto file: ownFileList) {
+                            for (i=4;i<list.size();i++) {
+                                if(list[i]==file) {
+                                    nd->reply += "@&#$" + list[i] ;
+                                    continue ;
                                 }
                             }
-                            nd->reply += "##" ;
                         }
+                        nd->reply += "@&#$@&#$" ;
+                    }
 
-                        else if (list[0] == "Reply") {
-                            for (int j=0;j<reqFileCount;j++) {
-                                for (int i=4;i<list.size();i++) {
-                                    if(list[i]==reqFileList[j].first) {
-                                        if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->ID) {
-                                            reqFileList[j].second = nd ;
-                                        }
-                                        continue ;
+                    else if (list[0] == "Reply") {
+                        for (int j=0;j<reqFileCount;j++) {
+                            for (int i=4;i<list.size();i++) {
+                                if(list[i]==reqFileList[j].first) {
+                                    if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->ID) {
+                                        reqFileList[j].second = nd ;
                                     }
+                                    continue ;
                                 }
                             }
+                        }
 
-                            receive_count++ ;
+                        receive_count++ ;
 
-                            if(receive_count == neighbourCount) {
-                                for(auto file:reqFileList) {
-                                    cout << "Found " + file.first + " at " ;
-                                    if(file.second != emptyNode) {
-                                        cout << file.second->uID ;
+                        if(receive_count == neighbourCount) {
+                            for(int j=0;j<reqFileCount;j++) {
+                                if(reqFileList[j].second != emptyNode) {
+                                    found_count++ ;
+                                }
+                                // cout << "Found " + reqFileList[j].first + " at " ;
+                                // if(reqFileList[j].second != emptyNode) {
+                                //     cout << reqFileList[j].second->uID ;
+                                // }
+                                // else cout << "0" ;
+                                // cout << " with MD5 0 at depth " ;
+                                // if(reqFileList[j].second != emptyNode) {
+                                //     cout << "1" ;
+                                // }
+                                // else cout << "0" ;
+                                // cout << endl ;
+
+                                if(reqFileList[j].second != emptyNode) {
+                                    string msg = "Demand@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT + "@&#$" + reqFileList[j].first + "@&#$@&#$";
+                                    reqFileList[j].second->demand.push(msg) ;
+                                }
+                            }
+                            if(found_count==0) {
+                                for(int j=0;j<reqFileCount;j++) {
+                                    cout << "Found " + reqFileList[j].first + " at " ;
+                                    if(reqFileList[j].second != emptyNode) {
+                                        cout << reqFileList[j].second->uID ;
                                     }
                                     else cout << "0" ;
-                                    cout << " with MD5 0 at depth " ;
-                                    if(file.second != emptyNode) {
+                                    cout << " with MD5 0" ;
+                                    cout << " at depth " ;
+                                    if(reqFileList[j].second != emptyNode) {
                                         cout << "1" ;
                                     }
                                     else cout << "0" ;
@@ -351,6 +400,63 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
+
+                    else if (list[0] == "Demand") {
+                        for(auto file:ownFileList) {
+                            if(file == list[4]) {
+                                vector<char> buffer (501,0); //reads only the first 1024 bytes
+
+                                ifstream fin(directory + list[4]) ;
+
+                                string file = readFileIntoString(directory + list[4]) ;
+
+                                for (unsigned i = 0; i < file.length(); i += 500) {
+                                    string msg = "Send@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT + "@&#$" + list[4] + "@&#$" + file.substr(i, 500) + "@&#$@&#$";
+                                    nd->send.push(msg) ;
+                                }
+
+                                string msg = "Finish@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT + "@&#$" + list[4] + "@&#$@&#$";
+                                nd->send.push(msg) ;
+
+                                continue ;
+                            }  
+                        }
+                    }
+
+                    else if (list[0] == "Send") {
+
+                        fstream file;
+
+                        file.open(directory + "Download/" + list[4], std::ios_base::app | std::ios_base::in);
+                        if (file.is_open())
+                            file << list[5] ;
+                    }
+
+                    else if (list[0] == "Finish") {
+                        string file = readFileIntoString(directory + "Download/" + list[4]) ;
+
+                        found_count-- ;
+
+                        if(found_count==0) {
+                            for(int j=0;j<reqFileCount;j++) {
+                                cout << "Found " + reqFileList[j].first + " at " ;
+                                if(reqFileList[j].second != emptyNode) {
+                                    cout << reqFileList[j].second->uID ;
+                                }
+                                else cout << "0" ;
+                                cout << " with MD5 " ;
+                                cout << md5(file) ;
+                                cout << " at depth " ;
+                                if(reqFileList[j].second != emptyNode) {
+                                    cout << "1" ;
+                                }
+                                else cout << "0" ;
+                                cout << endl ;
+                            }
+                        }
+
+                        
+                    }
                 } // END handle data from client
             } // END got new incoming connection
 
@@ -358,11 +464,11 @@ int main(int argc, char *argv[])
                 for (int j=0;j<neighbourCount;j++) {
                     if(neighbourList[j]->sockfd==i) {
                         if(neighbourList[j]->request == 0) {
-                            string msg = "Request#" + uniqueID + "#" + ID + "#" + PORT;
+                            string msg = "Request@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT;
                             for (auto file:reqFileList) {
-                                msg += "#" + file.first ;
+                                msg += "@&#$" + file.first ;
                             }
-                            msg += "##" ;
+                            msg += "@&#$@&#$" ;
                             if (send(i, msg.c_str(), msg.length(), 0) > 0) {
                                 neighbourList[j]->request=1 ;
                             }
@@ -371,6 +477,18 @@ int main(int argc, char *argv[])
                             string msg = neighbourList[j]->reply ;
                             if (send(i, msg.c_str(), msg.length(), 0) > 0) {
                                 neighbourList[j]->reply="" ;
+                            }
+                        }
+                        else if (!neighbourList[j]->demand.empty()) {
+                            string msg = neighbourList[j]->demand.front() ;
+                            if (send(i, msg.c_str(), msg.length(), 0) > 0) {
+                                neighbourList[j]->demand.pop() ;
+                            }
+                        }
+                        else if (!neighbourList[j]->send.empty()) {
+                            string msg = neighbourList[j]->send.front() ;
+                            if (send(i, msg.c_str(), msg.length(), 0) > 0) {
+                                neighbourList[j]->send.pop() ;
                             }
                         }
                         continue ;

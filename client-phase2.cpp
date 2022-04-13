@@ -41,18 +41,11 @@ class Node {
     // request = 1 if initial request sent
     // request = 0 if initial request not sent yet
     int request ; 
-    int rep ;
     string reply ;
     
-
     Node() {
         request = 0 ;
         reply = "" ;
-        rep = 1 ;
-    }
-
-    void AppendReply(string s) {
-        reply.append(s) ;
     }
 } ;
 
@@ -113,9 +106,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // for (auto file : ownFileList) {
-    //     cout << file << endl ;
-    // }
+    sort(ownFileList.begin(),ownFileList.end());
+
+    for (auto file : ownFileList) {
+        cout << file << endl ;
+    }
 
     fd_set master_read;    // master file descriptor list
     fd_set master_write;
@@ -324,7 +319,7 @@ int main(int argc, char *argv[])
                             for (int j=0;j<reqFileCount;j++) {
                                 for (int i=4;i<list.size();i++) {
                                     if(list[i]==reqFileList[j].first) {
-                                        if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->ID) {
+                                        if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->uID) {
                                             reqFileList[j].second = nd ;
                                         }
                                         continue ;

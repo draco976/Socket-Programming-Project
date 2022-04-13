@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <poll.h>
+#include<algorithm>
 
 using namespace std ;
 
@@ -94,6 +95,8 @@ int main(int argc, char *argv[])
         perror ("opendir");
         return EXIT_FAILURE;
     }
+
+    sort(ownFileList.begin(),ownFileList.end());
 
     for (auto file : ownFileList) {
         cout << file << endl ;
@@ -260,7 +263,7 @@ int main(int argc, char *argv[])
                         FD_CLR(i, &master_read); // remove from master set
                     } else {
 
-                        cout << "connected to " ;
+                        cout << "Connected to " ;
                         cout << buf[5] ;
                         cout << " with unique-ID " ;
                         for(j=0;j<4;j++) {
