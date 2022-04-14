@@ -60,6 +60,12 @@ class Node {
     }
 } ;
 
+bool cmp(Node* &nd1,Node *&nd2) {
+
+    return stoi(nd1->ID)<stoi(nd2->ID);
+}
+
+
 int main(int argc, char *argv[])
 {   
     string ID ;
@@ -241,6 +247,26 @@ int main(int argc, char *argv[])
         // cout << neighbour.second.c_str() << endl ;
     }
 
+    if(neighbourCount==0){
+
+        if(receive_count == neighbourCount) {
+            for(auto file:reqFileList) {
+                cout << "Found " + file.first.first + " at " ;
+                if(file.first.second != emptyNode) {
+                    cout << file.first.second->uID ;
+                }
+                else cout << "0" ;
+                cout << " with MD5 0 at depth " ;
+                cout << file.second ;
+                cout << endl ;
+            }
+        }
+        return 0;
+    }
+
+    int reqRec = 0;
+    int print=0;
+
     // main loop
     for(;;) {
         read_fds = master_read; // copy it
@@ -343,12 +369,14 @@ int main(int argc, char *argv[])
                                 cout<<"List[2]: "<<list[2]<<endl;
                             }*/
 
+                            if(list.size()>=4){
 
-                            for(int j=0;j<neighbourCount;j++) {
-                                if(neighbourList[j]->ID == list[2]) {
-                                    neighbourList[j]->uID = list[1] ;
-                                    nd1 = neighbourList[j] ;
-                                    continue ;
+                                for(int j=0;j<neighbourCount;j++) {
+                                    if(neighbourList[j]->ID == list[2]) {
+                                        neighbourList[j]->uID = list[1] ;
+                                        nd1 = neighbourList[j] ;
+                                        continue ;
+                                    }
                                 }
                             }
 
@@ -356,11 +384,8 @@ int main(int argc, char *argv[])
 
                             if(list[0] == "Request1") {
                                 
-                                cout << "Connected to " ;
-                                cout << list[2];
-                                cout << " with unique-ID " <<list[1] ;
-                                cout << " on port " << list[3];
-                                cout << endl ;
+                                reqRec++;
+                                
                                 nd1->reply = "Reply1#" + uniqueID + "#" + ID + "#" + PORT;
                                 string request2 = "Request2#" + list[1] + "#" + list[2] + "#" + list[3] + "#" + uniqueID + "#" + ID + "#" + PORT;
                                 
@@ -432,7 +457,7 @@ int main(int argc, char *argv[])
                                 for (int j=0;j<reqFileCount;j++) {
                                     for (int i=4;i<list.size();i++) {
                                         if(list[i]==reqFileList[j].first.first) {
-                                            if(reqFileList[j].first.second == emptyNode || list[1] < reqFileList[j].first.second->uID) {
+                                            if(reqFileList[j].first.second == emptyNode || (reqFileList[j].second != 1) || list[1] < reqFileList[j].first.second->uID) {
                                                 reqFileList[j].first.second = nd1 ;
                                                 //cout<<list[i]<<" "<<nd1->ID<<endl;
 
@@ -692,6 +717,22 @@ int main(int argc, char *argv[])
                 }
             }
         } // END looping through file descriptors
+
+        if(reqRec==neighbourCount&&print==0) {
+
+            sort(neighbourList.begin(),neighbourList.end(),cmp);
+
+            for(auto x:neighbourList) {
+
+                cout << "Connected to " ;
+                cout << x->ID;
+                cout << " with unique-ID " <<x->uID ;
+                cout << " on port " << x->PORT;
+                cout << endl ;
+                
+            }
+            print=1;
+        }
     } // END for(;;)--and you thought it would never end!
 
 

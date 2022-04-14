@@ -31,6 +31,7 @@ using namespace std ;
 
 #define BACKLOG 10
 
+
 string readFileIntoString(const string& path) {
     ifstream input_file(path);
     if (!input_file.is_open()) {
@@ -82,6 +83,11 @@ class Node {
         reply.append(s) ;
     }
 } ;
+
+bool cmp(Node* &nd1,Node *&nd2) {
+
+    return stoi(nd1->ID)<stoi(nd2->ID);
+}
 
 int main(int argc, char *argv[])
 {   
@@ -266,6 +272,23 @@ int main(int argc, char *argv[])
         // cout << neighbour.second.c_str() << endl ;
     }
 
+    if(neighbourCount==0){
+
+        if(receive_count == neighbourCount) {
+            for(auto file:reqFileList) {
+                cout << "Found " + file.first.first + " at " ;
+                if(file.first.second != emptyNode) {
+                    cout << file.first.second->uID ;
+                }
+                else cout << "0" ;
+                cout << " with MD5 0 at depth " ;
+                cout << file.second ;
+                cout << endl ;
+            }
+        }
+        return 0;
+    }
+
     int loop_ender=0;
 
     // main loop
@@ -370,23 +393,20 @@ int main(int argc, char *argv[])
                                 cout<<"List[2]: "<<list[2]<<endl;
                             }*/
 
+                            if(list.size()>=4) {
 
-                            for(int j=0;j<neighbourCount;j++) {
-                                if(neighbourList[j]->ID == list[2]) {
-                                    neighbourList[j]->uID = list[1] ;
-                                    nd1 = neighbourList[j] ;
-                                    continue ;
+                                for(int j=0;j<neighbourCount;j++) {
+                                    if(neighbourList[j]->ID == list[2]) {
+                                        neighbourList[j]->uID = list[1] ;
+                                        nd1 = neighbourList[j] ;
+                                        continue ;
+                                    }
                                 }
                             }
 
                             //cout<<"ND1 is: "<<nd1->ID<<" "<<nd1->uID<<endl;
 
                             if(list[0] == "Request1") {
-                                cout << "Connected to " ;
-                                cout << list[2];
-                                cout << " with unique-ID " <<list[1] ;
-                                cout << " on port " << list[3];
-                                cout << endl ;
                                 
                                 nd1->reply = "Reply1#" + uniqueID + "#" + ID + "#" + PORT;
                                 string request2 = "Request2#" + list[1] + "#" + list[2] + "#" + list[3] + "#" + uniqueID + "#" + ID + "#" + PORT;
@@ -459,7 +479,7 @@ int main(int argc, char *argv[])
                                 for (int j=0;j<reqFileCount;j++) {
                                     for (int i=4;i<list.size();i++) {
                                         if(list[i]==reqFileList[j].first.first) {
-                                            if(reqFileList[j].first.second == emptyNode || list[1] < reqFileList[j].first.second->uID) {
+                                            if(reqFileList[j].first.second == emptyNode || (reqFileList[j].second != 1) || list[1] < reqFileList[j].first.second->uID) {
                                                 reqFileList[j].first.second = nd1 ;
                                                 //cout<<list[i]<<" "<<nd1->ID<<endl;
 
@@ -729,6 +749,18 @@ int main(int argc, char *argv[])
         }
     } // END for(;;)--and you thought it would never end!
 
+    sort(neighbourList.begin(),neighbourList.end(),cmp);
+
+    for(auto x:neighbourList) {
+
+        cout << "Connected to " ;
+        cout << x->ID;
+        cout << " with unique-ID " << x->uID ;
+        cout << " on port " << x->PORT;
+        cout << endl ;
+        
+    }
+
     sleep(5);
     //cout<<"HEHEHE"<<endl;
     //cout<<file_count<<endl;
@@ -741,6 +773,8 @@ int main(int argc, char *argv[])
 
             continue;
         }
+
+        //cout<<"FILES: "<<x.first.first<<" "<<x.first.second->uID<<" "<<" "<<x.second<<endl;
 
         neighbourCount++;
 
@@ -787,9 +821,13 @@ int main(int argc, char *argv[])
 
     //cout<<"HAIYAA"<<endl;
 
-    string downloads = directory+"Download/";
+    //sleep(5);
+
+    string downloads = directory+"Downloaded/";
 
     mkdir(downloads.c_str(),0777);
+
+    int acks=neighbourCount;
     
     // main loop
     for(;;) {
@@ -840,6 +878,8 @@ int main(int argc, char *argv[])
                     vector<string> list ;
                     string s ;
 
+                    int val=0;
+
                     while (buf_idx < 1024)
                     {
                         int nbytes = recv(i, buf+buf_idx, 1, 0) ;
@@ -847,6 +887,7 @@ int main(int argc, char *argv[])
                             //printf("selectserver: socket %d hung up\n", i);
                             close(i); // bye!
                             FD_CLR(i, &master_read); // remove from master set
+                            val=1;
                             break;
                         }
                         else if(nbytes < 0) {
@@ -871,16 +912,12 @@ int main(int argc, char *argv[])
                         buf_idx++;
                     };
 
-                    /*cout<<"Received: ";
-                    
-                    for(int i=0;i<list.size();i++){
+                    if(val){
 
-                        cout<<list[i]<<" ";
+                        continue;
                     }
 
-                    cout<<endl;*/
-
-                    Node *nd;
+                    Node *nd=nullptr;
 
                     for(int i=0;i<neighbourCount;i++) {
 
@@ -890,8 +927,66 @@ int main(int argc, char *argv[])
                             break;
                         }
                     }
+                    /*cout<<"Received: ";
+                    
+                    for(int i=0;i<list.size();i++){
 
-                    if(list[0]=="RSend") {
+                        cout<<list[i]<<" ";
+                    }
+
+                    cout<<endl;*/
+
+                    if(nd==nullptr) {
+
+                        //cout<<"WHATTHEFUCKHAU"<<endl;
+
+                        neighbourCount++;
+                        nd =new Node();
+                        struct addrinfo hints, *res;
+                        // first, load up address structs with getaddrinfo():
+                        nd->PORT = list[3];
+                        nd->uID = list[1];
+                        nd->ID = list[2];
+
+                        memset(&hints, 0, sizeof hints);
+                        hints.ai_family = AF_UNSPEC;
+                        hints.ai_socktype = SOCK_STREAM;
+                        hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+
+                        getaddrinfo(NULL, nd->PORT.c_str(), &hints, &res);
+
+                        // make a socket:
+
+                        nd->sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+                        // connect!
+
+                        while(connect(nd->sockfd, res->ai_addr, res->ai_addrlen)<0) {
+                            close(nd->sockfd) ;
+                            nd->sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+                            sleep(2) ;
+                        }
+
+                        FD_SET(nd->sockfd, &master_write); // add to master set
+                        if (nd->sockfd > fdmax) {    // keep track of the max
+                            fdmax = nd->sockfd;
+                        }
+
+                        neighbourList.push_back(nd); 
+                        acks++;  
+                     
+                    }
+
+                    //cout<<"Value of nd: "<<list[2]<<endl;
+
+                    if(list[0]=="ACKNOWLEDGEMENT") {
+
+                        acks--;
+                        //cout<<"RECEIVED: "<<
+                    }
+                    
+                    else if(list[0]=="RSend") {
 
                         for(auto file:ownFileList) {
                             if(file == list[4]) {
@@ -920,7 +1015,7 @@ int main(int argc, char *argv[])
 
                         fstream file;
 
-                        file.open(directory + "Download/" + list[4], std::ios_base::app | std::ios_base::in);
+                        file.open(directory + "Downloaded/" + list[4], std::ios_base::app | std::ios_base::in);
                         if (file.is_open())
                             file << list[5] ;
 
@@ -946,7 +1041,7 @@ int main(int argc, char *argv[])
                                     continue;
                                 }
                                 
-                                string file = readFileIntoString(directory + "Download/" + reqFileList[j].first.first) ;
+                                string file = readFileIntoString(directory + "Downloaded/" + reqFileList[j].first.first) ;
 
                                 cout << "Found " + reqFileList[j].first.first + " at " ;
                                 if(reqFileList[j].first.second != emptyNode) {
@@ -959,7 +1054,13 @@ int main(int argc, char *argv[])
                                 cout << reqFileList[j].second;
                                 cout << endl ;
                             }
+
+                            for(int i=0;i<neighbourCount;i++){
+
+                                neighbourList[i]->reply="ACKNOWLEDGEMENT@&#$"+uniqueID+"@&#$"+ID+"@&#$"+PORT+"@&#$"+"@&#$";
+                            }
                         }
+                        
                     }
                 } // END handle data from client
             } // END got new incoming connection
@@ -1026,6 +1127,11 @@ int main(int argc, char *argv[])
         //         }
         //     }
         // }
+
+        if(file_count==0&&acks==0) {
+
+            break;
+        }
 
     } // END for(;;)--and you thought it would never end!
 

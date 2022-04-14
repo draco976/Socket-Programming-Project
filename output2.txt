@@ -1,4 +1,0 @@
-bar.pdf
-random.py
-Connected to 3 with unique-ID 4526 on port 5001
-Found f1.txt at 3765 with MD5 874ca5eeef835e5742c3440e651e8a30 at depth 2
