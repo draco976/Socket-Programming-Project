@@ -47,6 +47,10 @@ class Node {
         request = 0 ;
         reply = "" ;
     }
+
+    bool operator< (const Node &other) const {
+        return stoi(ID) < stoi(other.ID);
+    }
 } ;
 
 int main(int argc, char *argv[])
@@ -64,6 +68,7 @@ int main(int argc, char *argv[])
     Node* emptyNode = new Node() ;
 
     int receive_count = 0 ; // Number of nodes msg received from
+    int connection_count = 0 ;
 
     ifstream configFile(argv[1]);
     directory = argv[2] ;
@@ -79,6 +84,8 @@ int main(int argc, char *argv[])
         configFile >> node->ID >> node->PORT ;
         neighbourList.push_back(node) ;
     }
+
+    sort(neighbourList.begin(),neighbourList.end()) ;
 
     configFile >> reqFileCount ;
 
@@ -96,7 +103,7 @@ int main(int argc, char *argv[])
 
     if ((dir = opendir(directory.data())) != nullptr) {
         while ((diread = readdir(dir)) != nullptr) {
-            if ((string) diread->d_name != "." && (string) diread->d_name != "..") {
+            if ((string) diread->d_name != "." && (string) diread->d_name != "Downloaded" && (string) diread->d_name != "..") {
                 ownFileList.push_back(diread->d_name);
             }
         }
@@ -110,6 +117,16 @@ int main(int argc, char *argv[])
 
     for (auto file : ownFileList) {
         cout << file << endl ;
+    }
+
+    if(neighbourCount==0) {
+        for(auto file:reqFileList) {
+            cout << "Found " + file.first + " at " ;
+            cout << "0" ;
+            cout << " with MD5 0 at depth " ;
+            cout << "0" ;
+            cout << endl ;
+        }
     }
 
     fd_set master_read;    // master file descriptor list
@@ -313,13 +330,27 @@ int main(int argc, char *argv[])
                                 }
                             }
                             nd->reply += "##" ;
+
+                            connection_count++ ;
+
+                            if(connection_count==neighbourCount) {
+                                for(auto node: neighbourList) {
+                                    cout << "Connected to " ;
+                                    cout << node->ID ;
+                                    cout << " with unique-ID " ;
+                                    cout << node->uID ;
+                                    cout << " on port " ;
+                                    cout << node->PORT ;
+                                    cout << endl ;
+                                }   
+                            }
                         }
 
                         else if (list[0] == "Reply") {
                             for (int j=0;j<reqFileCount;j++) {
                                 for (int i=4;i<list.size();i++) {
                                     if(list[i]==reqFileList[j].first) {
-                                        if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->uID) {
+                                        if(reqFileList[j].second == emptyNode || stoi(list[1]) < stoi(reqFileList[j].second->uID)) {
                                             reqFileList[j].second = nd ;
                                         }
                                         continue ;

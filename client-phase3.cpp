@@ -65,6 +65,10 @@ class Node {
         demand.empty() ;
         send.empty() ;
     }
+
+    bool operator< (const Node &other) const {
+        return stoi(ID) < stoi(other.ID);
+    }
 } ;
 
 int main(int argc, char *argv[])
@@ -80,18 +84,19 @@ int main(int argc, char *argv[])
     string directory ;
 
 
-    // std::experimental::filesystem::remove((directory+"Download/").c_str());
+    // std::experimental::filesystem::remove((directory+"Downloaded/").c_str());
 
 
     Node* emptyNode = new Node() ;
 
     int receive_count = 0 ; // Number of nodes msg received from
     int found_count = 0 ;
+    int connection_count = 0 ;
 
     ifstream configFile(argv[1]);
     directory = argv[2] ;
 
-    mkdir((directory+"Download/").c_str(), 0777) ; 
+    mkdir((directory+"Downloaded/").c_str(), 0777) ; 
 
     configFile >> ID >> PORT >> uniqueID ;
     // configFile >> ID >> uniqueID ;
@@ -104,6 +109,8 @@ int main(int argc, char *argv[])
         configFile >> node->ID >> node->PORT ;
         neighbourList.push_back(node) ;
     }
+
+    sort(neighbourList.begin(),neighbourList.end()) ;
 
     configFile >> reqFileCount ;
 
@@ -121,7 +128,7 @@ int main(int argc, char *argv[])
 
     if ((dir = opendir(directory.data())) != nullptr) {
         while ((diread = readdir(dir)) != nullptr) {
-            if ((string) diread->d_name != "." && (string) diread->d_name != "..") {
+            if ((string) diread->d_name != "." && (string) diread->d_name != "Downloaded" && (string) diread->d_name != "..") {
                 ownFileList.push_back(diread->d_name);
             }
         }
@@ -135,6 +142,16 @@ int main(int argc, char *argv[])
 
     for (auto file : ownFileList) {
         cout << file << endl ;
+    }
+
+    if(neighbourCount==0) {
+        for(auto file:reqFileList) {
+            cout << "Found " + file.first + " at " ;
+            cout << "0" ;
+            cout << " with MD5 0 at depth " ;
+            cout << "0" ;
+            cout << endl ;
+        }
     }
 
     fd_set master_read;    // master file descriptor list
@@ -344,13 +361,27 @@ int main(int argc, char *argv[])
                             }
                         }
                         nd->reply += "@&#$@&#$" ;
+
+                        connection_count++ ;
+
+                        if(connection_count==neighbourCount) {
+                            for(auto node: neighbourList) {
+                                cout << "Connected to " ;
+                                cout << node->ID ;
+                                cout << " with unique-ID " ;
+                                cout << node->uID ;
+                                cout << " on port " ;
+                                cout << node->PORT ;
+                                cout << endl ;
+                            }   
+                        }
                     }
 
                     else if (list[0] == "Reply") {
                         for (int j=0;j<reqFileCount;j++) {
                             for (int i=4;i<list.size();i++) {
                                 if(list[i]==reqFileList[j].first) {
-                                    if(reqFileList[j].second == emptyNode || list[1] < reqFileList[j].second->ID) {
+                                    if(reqFileList[j].second == emptyNode || stoi(list[1]) < stoi(reqFileList[j].second->uID)) {
                                         reqFileList[j].second = nd ;
                                     }
                                     continue ;
@@ -365,17 +396,6 @@ int main(int argc, char *argv[])
                                 if(reqFileList[j].second != emptyNode) {
                                     found_count++ ;
                                 }
-                                // cout << "Found " + reqFileList[j].first + " at " ;
-                                // if(reqFileList[j].second != emptyNode) {
-                                //     cout << reqFileList[j].second->uID ;
-                                // }
-                                // else cout << "0" ;
-                                // cout << " with MD5 0 at depth " ;
-                                // if(reqFileList[j].second != emptyNode) {
-                                //     cout << "1" ;
-                                // }
-                                // else cout << "0" ;
-                                // cout << endl ;
 
                                 if(reqFileList[j].second != emptyNode) {
                                     string msg = "Demand@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT + "@&#$" + reqFileList[j].first + "@&#$@&#$";
@@ -427,31 +447,42 @@ int main(int argc, char *argv[])
 
                         fstream file;
 
-                        file.open(directory + "Download/" + list[4], std::ios_base::app | std::ios_base::in);
+                        file.open(directory + "Downloaded/" + list[4], std::ios_base::app | std::ios_base::in);
                         if (file.is_open())
                             file << list[5] ;
                     }
 
                     else if (list[0] == "Finish") {
-                        string file = readFileIntoString(directory + "Download/" + list[4]) ;
 
                         found_count-- ;
 
                         if(found_count==0) {
                             for(int j=0;j<reqFileCount;j++) {
-                                cout << "Found " + reqFileList[j].first + " at " ;
-                                if(reqFileList[j].second != emptyNode) {
-                                    cout << reqFileList[j].second->uID ;
+                                if(reqFileList[j].second == emptyNode) {
+                                    cout << "Found " + reqFileList[j].first + " at " ;
+                                    cout << "0" ;
+                                    cout << " with MD5 " ;
+                                    cout << 0 ;
+                                    cout << " at depth " ;
+                                    cout << "0" ;
+                                    cout << endl ;
                                 }
-                                else cout << "0" ;
-                                cout << " with MD5 " ;
-                                cout << md5(file) ;
-                                cout << " at depth " ;
-                                if(reqFileList[j].second != emptyNode) {
-                                    cout << "1" ;
+                                else {
+                                    string file = readFileIntoString(directory + "Downloaded/" + reqFileList[j].first) ;
+                                    cout << "Found " + reqFileList[j].first + " at " ;
+                                    if(reqFileList[j].second != emptyNode) {
+                                        cout << reqFileList[j].second->uID ;
+                                    }
+                                    else cout << "0" ;
+                                    cout << " with MD5 " ;
+                                    cout << md5(file) ;
+                                    cout << " at depth " ;
+                                    if(reqFileList[j].second != emptyNode) {
+                                        cout << "1" ;
+                                    }
+                                    else cout << "0" ;
+                                    cout << endl ;
                                 }
-                                else cout << "0" ;
-                                cout << endl ;
                             }
                         }
 

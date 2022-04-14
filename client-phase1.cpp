@@ -43,6 +43,10 @@ class Node {
     Node() {
         status = 0 ;
     }
+
+    bool operator< (const Node &other) const {
+        return stoi(ID) < stoi(other.ID);
+    }
 } ;
 
 int main(int argc, char *argv[])
@@ -56,6 +60,8 @@ int main(int argc, char *argv[])
     vector<string> reqFileList ;
     vector<string> ownFileList ;
     string directory ;
+
+    int connection_count=0 ;
 
     ifstream configFile(argv[1]);
     directory = argv[2] ;
@@ -72,6 +78,8 @@ int main(int argc, char *argv[])
         neighbourList.push_back(node) ;
     }
 
+    sort(neighbourList.begin(),neighbourList.end()) ;
+
     configFile >> reqFileCount ;
 
     for (int i=0;i<reqFileCount;i++) {
@@ -86,7 +94,7 @@ int main(int argc, char *argv[])
 
     if ((dir = opendir(directory.data())) != nullptr) {
         while ((diread = readdir(dir)) != nullptr) {
-            if ((string) diread->d_name != "." && (string) diread->d_name != "..") {
+            if ((string) diread->d_name != "." && (string) diread->d_name != "Downloaded" && (string) diread->d_name != "..") {
                 ownFileList.push_back(diread->d_name);
             }
         }
@@ -263,17 +271,46 @@ int main(int argc, char *argv[])
                         FD_CLR(i, &master_read); // remove from master set
                     } else {
 
-                        cout << "Connected to " ;
-                        cout << buf[5] ;
-                        cout << " with unique-ID " ;
-                        for(j=0;j<4;j++) {
-                            cout << buf[j] ;
+                        string msg = (string) buf ;
+
+                        vector<string> list ;
+
+                        auto start = 0U;
+                        auto end = msg.find("#");
+                        while (end != string::npos)
+                        {
+                            if(msg[start]=='#') break ;
+                            list.push_back(msg.substr(start, end - start)) ;
+                            start = end + 1;
+                            end = msg.find("#", start);
                         }
-                        cout << " on port " ;
-                        for(j=7;j<11;j++) {
-                            cout << buf[j] ;
+
+                        // Identify nodes
+
+                        Node* nd ;
+
+                        for(int j=0;j<neighbourCount;j++) {
+                            if(neighbourList[j]->ID == list[1]) {
+                                neighbourList[j]->uID = list[0] ;
+                                nd = neighbourList[j] ;
+                                continue ;
+                            }
                         }
-                        cout << endl ;
+
+                        connection_count++ ;
+
+                        if(connection_count==neighbourCount) {
+                            for(auto node: neighbourList) {
+                                cout << "Connected to " ;
+                                cout << node->ID ;
+                                cout << " with unique-ID " ;
+                                cout << node->uID ;
+                                cout << " on port " ;
+                                cout << node->PORT ;
+                                cout << endl ;
+                            }
+                            
+                        }
                     }
                 } // END handle data from client
             } // END got new incoming connection

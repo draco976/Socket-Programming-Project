@@ -761,7 +761,7 @@ int main(int argc, char *argv[])
         
     }
 
-    sleep(5);
+    sleep(2);
     //cout<<"HEHEHE"<<endl;
     //cout<<file_count<<endl;
 
