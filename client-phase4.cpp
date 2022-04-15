@@ -20,7 +20,7 @@
 
 using namespace std ;
 
-#define BACKLOG 10
+#define BACKLOG 50
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
     freeaddrinfo(ai); // all done with this
 
     // listen
-    if (listen(listener, 10) == -1) {
+    if (listen(listener, BACKLOG) == -1) {
         perror("listen");
         exit(3);
     }

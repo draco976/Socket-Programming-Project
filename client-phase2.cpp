@@ -19,7 +19,7 @@
 
 using namespace std ;
 
-#define BACKLOG 10
+#define BACKLOG 50
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -47,11 +47,11 @@ class Node {
         request = 0 ;
         reply = "" ;
     }
-
-    bool operator< (const Node &other) const {
-        return stoi(ID) < stoi(other.ID);
-    }
 } ;
+
+bool cmp(Node* &nd1,Node *&nd2) {
+    return stoi(nd1->ID)<stoi(nd2->ID);
+}
 
 int main(int argc, char *argv[])
 {   
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
         neighbourList.push_back(node) ;
     }
 
-    sort(neighbourList.begin(),neighbourList.end()) ;
+    sort(neighbourList.begin(),neighbourList.end(),cmp) ;
 
     configFile >> reqFileCount ;
 
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
     freeaddrinfo(ai); // all done with this
 
     // listen
-    if (listen(listener, 10) == -1) {
+    if (listen(listener, BACKLOG) == -1) {
         perror("listen");
         exit(3);
     }
@@ -244,7 +244,7 @@ int main(int argc, char *argv[])
     for(;;) {
         read_fds = master_read; // copy it
         write_fds = master_write;
-        if (select(fdmax+1, &read_fds, &write_fds, NULL, &tv) == -1) {
+        if (select(fdmax+1, &read_fds, &write_fds, NULL, 0) == -1) {
             perror("select");
             exit(4);
         }
@@ -278,102 +278,111 @@ int main(int argc, char *argv[])
                     }
                 } 
                 else {
-                    // handle data from a client
-                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-                        // got error or connection closed by client
-                        if (nbytes == 0) {
-                            // connection closed
+
+                    size_t buf_idx = 0;
+                    char buf[1024] ;
+
+                    vector<string> list ;
+                    string s ;
+
+                    while (buf_idx < 1024)
+                    {
+                        int nbytes = recv(i, buf+buf_idx, 1, 0) ;
+                        if(nbytes  == 0) {
                             printf("selectserver: socket %d hung up\n", i);
-                        } else {
+                            close(i); // bye!
+                            FD_CLR(i, &master_read); // remove from master set
+                        }
+                        else if(nbytes < 0) {
+                            break ;
+                        }
+
+                        if (buf_idx > 6 && '$' == buf[buf_idx] && '#' == buf[buf_idx - 1] && '&' == buf[buf_idx-2]  && buf[buf_idx-3] == '@' 
+                        && '$' == buf[buf_idx-4] && '#' == buf[buf_idx - 5] && '&' == buf[buf_idx-6]  && buf[buf_idx-7] == '@'){
+                            break;
+                        }
+                        else if (buf_idx > 2 && buf[buf_idx] == '$' && buf[buf_idx-1] == '#' && buf[buf_idx-2] == '&' && buf[buf_idx-3] == '@') {    
+                            s = s.substr(0, s.length() - 3) ;
+                            list.push_back(s) ;
+                            s = "" ;
+                        }
+                        else {
+                            s += buf[buf_idx] ;
+                        }
+                        
+                        buf_idx++;
+                    };
+
+                    if(list.size()<4) {
+                        continue  ;
+                    }
+
+                    // Identify nodes
+
+                    Node* nd ;
+
+                    for(int j=0;j<neighbourCount;j++) {
+                        if(neighbourList[j]->ID == list[2]) {
+                            neighbourList[j]->uID = list[1] ;
+                            nd = neighbourList[j] ;
                             continue ;
                         }
-                        close(i); // bye!
-                        FD_CLR(i, &master_read); // remove from master set
-                    } else {
+                    }
 
-                        // Break msg
-
-                        string msg = (string) buf ;
-
-                        vector<string> list ;
-
-                        auto start = 0U;
-                        auto end = msg.find("#");
-                        while (end != string::npos)
-                        {
-                            if(msg[start]=='#') break ;
-                            list.push_back(msg.substr(start, end - start)) ;
-                            start = end + 1;
-                            end = msg.find("#", start);
-                        }
-
-                        // Identify nodes
-
-                        Node* nd ;
-
-                        for(int j=0;j<neighbourCount;j++) {
-                            if(neighbourList[j]->ID == list[2]) {
-                                neighbourList[j]->uID = list[1] ;
-                                nd = neighbourList[j] ;
-                                continue ;
-                            }
-                        }
-
-                        if(list[0] == "Request") {
-                            nd->reply = "Reply#" + uniqueID + "#" + ID + "#" + PORT;
-                            for (auto file: ownFileList) {
-                                for (i=4;i<list.size();i++) {
-                                    if(list[i]==file) {
-                                        nd->reply += "#" + list[i] ;
-                                        continue ;
-                                    }
+                    if(list[0] == "Request") {
+                        nd->reply = "Reply@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT;
+                        for (auto file: ownFileList) {
+                            for (i=4;i<list.size();i++) {
+                                if(list[i]==file) {
+                                    nd->reply += "@&#$" + list[i] ;
+                                    continue ;
                                 }
                             }
-                            nd->reply += "##" ;
+                        }
+                        nd->reply += "@&#$@&#$" ;
 
-                            connection_count++ ;
+                        connection_count++ ;
 
-                            if(connection_count==neighbourCount) {
-                                for(auto node: neighbourList) {
-                                    cout << "Connected to " ;
-                                    cout << node->ID ;
-                                    cout << " with unique-ID " ;
-                                    cout << node->uID ;
-                                    cout << " on port " ;
-                                    cout << node->PORT ;
-                                    cout << endl ;
-                                }   
+                        if(connection_count==neighbourCount) {
+                            for(auto node: neighbourList) {
+                                cout << "Connected to " ;
+                                cout << node->ID ;
+                                cout << " with unique-ID " ;
+                                cout << node->uID ;
+                                cout << " on port " ;
+                                cout << node->PORT ;
+                                cout << endl ;
+                            }   
+                        }
+                    }
+
+                    else if (list[0] == "Reply") {
+                        for (int j=0;j<reqFileCount;j++) {
+                            for (int i=4;i<list.size();i++) {
+                                if(list[i]==reqFileList[j].first) {
+                                    if(reqFileList[j].second == emptyNode || stoi(list[1]) < stoi(reqFileList[j].second->uID)) {
+                                        reqFileList[j].second = nd ;
+                                    }
+                                    continue ;
+                                }
                             }
                         }
 
-                        else if (list[0] == "Reply") {
-                            for (int j=0;j<reqFileCount;j++) {
-                                for (int i=4;i<list.size();i++) {
-                                    if(list[i]==reqFileList[j].first) {
-                                        if(reqFileList[j].second == emptyNode || stoi(list[1]) < stoi(reqFileList[j].second->uID)) {
-                                            reqFileList[j].second = nd ;
-                                        }
-                                        continue ;
-                                    }
-                                }
-                            }
+                        receive_count++ ;
 
-                            receive_count++ ;
-
-                            if(receive_count == neighbourCount) {
-                                for(auto file:reqFileList) {
-                                    cout << "Found " + file.first + " at " ;
-                                    if(file.second != emptyNode) {
-                                        cout << file.second->uID ;
-                                    }
-                                    else cout << "0" ;
-                                    cout << " with MD5 0 at depth " ;
-                                    if(file.second != emptyNode) {
-                                        cout << "1" ;
-                                    }
-                                    else cout << "0" ;
-                                    cout << endl ;
+                        if(receive_count == neighbourCount) {
+                            for(auto file:reqFileList) {
+                                cout << "Found " + file.first + " at " ;
+                                if(file.second != emptyNode) {
+                                    cout << file.second->uID ;
                                 }
+                                else cout << "0" ;
+                                cout << " with MD5 0 at depth " ;
+                                if(file.second != emptyNode) {
+                                    cout << "1" ;
+                                }
+                                else cout << "0" ;
+                                cout << endl ;
                             }
                         }
                     }
@@ -384,11 +393,11 @@ int main(int argc, char *argv[])
                 for (int j=0;j<neighbourCount;j++) {
                     if(neighbourList[j]->sockfd==i) {
                         if(neighbourList[j]->request == 0) {
-                            string msg = "Request#" + uniqueID + "#" + ID + "#" + PORT;
+                            string msg = "Request@&#$" + uniqueID + "@&#$" + ID + "@&#$" + PORT;
                             for (auto file:reqFileList) {
-                                msg += "#" + file.first ;
+                                msg += "@&#$" + file.first ;
                             }
-                            msg += "##" ;
+                            msg += "@&#$@&#$" ;
                             if (send(i, msg.c_str(), msg.length(), 0) > 0) {
                                 neighbourList[j]->request=1 ;
                             }

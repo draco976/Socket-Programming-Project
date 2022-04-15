@@ -17,7 +17,7 @@
 
 using namespace std ;
 
-#define BACKLOG 10
+#define BACKLOG 50
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -43,11 +43,11 @@ class Node {
     Node() {
         status = 0 ;
     }
-
-    bool operator< (const Node &other) const {
-        return stoi(ID) < stoi(other.ID);
-    }
 } ;
+
+bool cmp(Node* &nd1,Node *&nd2) {
+    return stoi(nd1->ID)<stoi(nd2->ID);
+}
 
 int main(int argc, char *argv[])
 {   
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
         neighbourList.push_back(node) ;
     }
 
-    sort(neighbourList.begin(),neighbourList.end()) ;
+    sort(neighbourList.begin(),neighbourList.end(), cmp) ;
 
     configFile >> reqFileCount ;
 
@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
     freeaddrinfo(ai); // all done with this
 
     // listen
-    if (listen(listener, 10) == -1) {
+    if (listen(listener, BACKLOG) == -1) {
         perror("listen");
         exit(3);
     }
