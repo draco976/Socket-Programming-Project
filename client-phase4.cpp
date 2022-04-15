@@ -564,11 +564,14 @@ int main(int argc, char *argv[])
 
                                 Node *nd2;
 
-                                for(int j=0;j<neighbourCount;j++) {
-                                    if(neighbourList[j]->ID == list[5]) {
-                                        neighbourList[j]->uID = list[4] ;
-                                        nd2 = neighbourList[j] ;
-                                        continue ;
+                                if(list.size()>=6){
+
+                                    for(int j=0;j<neighbourCount;j++) {
+                                        if(neighbourList[j]->ID == list[5]) {
+                                            neighbourList[j]->uID = list[4] ;
+                                            nd2 = neighbourList[j] ;
+                                            continue ;
+                                        }
                                     }
                                 }
 
@@ -641,7 +644,7 @@ int main(int argc, char *argv[])
                                             continue;
                                         }
 
-                                        neighbourList[j]->reply = "Reply2#FINISH##";
+                                        neighbourList[j]->reply = "Reply2#"+uniqueID+"#"+ID+"#"+PORT+"#"+"FINISH##";
                                     }
                                 }else{
 
